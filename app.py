@@ -4,176 +4,147 @@ import random
 import os
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from psycopg2.pool import SimpleConnectionPool
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "supersecretkey")
+
 bcrypt = Bcrypt(app)
 
-# ─────────────────────────────────────────────────────────────
-# DATABASE — Supabase (PostgreSQL)
-#
-# In your .env or hosting dashboard, set ONE of these:
-#
-#   Option A — Supabase "URI" connection string (recommended):
-#     DATABASE_URL=postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
-#
-#   Option B — individual Supabase vars (set all five):
-#     SUPABASE_HOST     = aws-0-[region].pooler.supabase.com
-#     SUPABASE_PORT     = 6543
-#     SUPABASE_DB       = postgres
-#     SUPABASE_USER     = postgres.[project-ref]
-#     SUPABASE_PASSWORD = your-db-password
-#
-# Find these in: Supabase Dashboard → Project Settings → Database → Connection string
-# ─────────────────────────────────────────────────────────────
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# ─────────────────────────────
-# AGE GROUP CONFIG
-# ─────────────────────────────
-AGE_GROUPS = [
-    {"name": "age_6_7",    "label": "Ages 6–7",    "min": 6,  "max": 7},
-    {"name": "age_8_9",    "label": "Ages 8–9",    "min": 8,  "max": 9},
-    {"name": "age_10_11",  "label": "Ages 10–11",  "min": 10, "max": 11},
-    {"name": "age_12_13",  "label": "Ages 12–13",  "min": 12, "max": 13},
-    {"name": "age_14_15",  "label": "Ages 14–15",  "min": 14, "max": 15},
-    {"name": "age_16_17",  "label": "Ages 16–17",  "min": 16, "max": 17},
-    {"name": "age_18plus", "label": "Ages 18+",    "min": 18, "max": 999},
-]
+# -----------------------------
+# DATABASE CONNECTION (POOL)
+# -----------------------------
+_pool = None
 
-# Test difficulty per age group
-TEST_CONFIG = {
-    "age_6_7":    {"sym_range": (1, 20),  "ans_range": (3, 12),  "wm_start": 2, "sym_trials": 8,  "ans_trials": 8},
-    "age_8_9":    {"sym_range": (1, 30),  "ans_range": (4, 15),  "wm_start": 3, "sym_trials": 10, "ans_trials": 10},
-    "age_10_11":  {"sym_range": (1, 40),  "ans_range": (5, 18),  "wm_start": 3, "sym_trials": 10, "ans_trials": 10},
-    "age_12_13":  {"sym_range": (1, 50),  "ans_range": (5, 20),  "wm_start": 3, "sym_trials": 12, "ans_trials": 12},
-    "age_14_15":  {"sym_range": (1, 60),  "ans_range": (5, 25),  "wm_start": 4, "sym_trials": 12, "ans_trials": 12},
-    "age_16_17":  {"sym_range": (1, 75),  "ans_range": (5, 30),  "wm_start": 4, "sym_trials": 15, "ans_trials": 15},
-    "age_18plus": {"sym_range": (1, 99),  "ans_range": (5, 40),  "wm_start": 4, "sym_trials": 15, "ans_trials": 15},
-}
+def get_pool():
+    global _pool
+    if _pool is None:
+        if not DATABASE_URL:
+            raise RuntimeError("DATABASE_URL environment variable is not set.")
+        _pool = SimpleConnectionPool(1, 5, dsn=DATABASE_URL, sslmode="require", connect_timeout=5)
+    return _pool
 
-def get_age_group(age):
-    for g in AGE_GROUPS:
-        if g["min"] <= age <= g["max"]:
-            return g["name"]
-    return "age_18plus"
-
-def get_test_config():
-    ag = session.get("age_group", "age_10_11")
-    return TEST_CONFIG.get(ag, TEST_CONFIG["age_10_11"])
-
-# ─────────────────────────────
-# DB
-# ─────────────────────────────
 def get_db_connection():
-    # Supabase URLs may already include SSL params — avoid conflict by only
-    # appending sslmode=require if not already present in the URL.
-    url = DATABASE_URL
-    if url and "sslmode" not in url:
-        url = url + ("&" if "?" in url else "?") + "sslmode=require"
-    return psycopg2.connect(url)
+    return get_pool().getconn()
 
-# ─────────────────────────────
-# MODEL LOADING (lazy, cached per age group)
-# ─────────────────────────────
-_model_cache = {}
+def release_db_connection(conn):
+    get_pool().putconn(conn)
 
-def load_model(age_group=None):
-    import pickle
-    global _model_cache
-    if age_group is None:
-        age_group = session.get("age_group", "age_10_11")
-    if age_group not in _model_cache:
+
+# -----------------------------
+# ML MODEL LAZY LOADING
+# -----------------------------
+model = None
+label_encoder = None
+
+def load_model():
+    global model, label_encoder
+    if model is None:
+        import pickle
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-        m_path  = os.path.join(BASE_DIR, "models", f"model_{age_group}.pkl")
-        le_path = os.path.join(BASE_DIR, "models", f"label_encoder_{age_group}.pkl")
-        # fallback to generic if age-specific doesn't exist
-        if not os.path.exists(m_path):
-            m_path  = os.path.join(BASE_DIR, "models", "model.pkl")
-            le_path = os.path.join(BASE_DIR, "models", "label_encoder.pkl")
-        _model_cache[age_group] = (
-            pickle.load(open(m_path, "rb")),
-            pickle.load(open(le_path, "rb"))
-        )
-    return _model_cache[age_group]
+        with open(os.path.join(BASE_DIR, "models", "model.pkl"), "rb") as f:
+            model = pickle.load(f)
+        with open(os.path.join(BASE_DIR, "models", "label_encoder.pkl"), "rb") as f:
+            label_encoder = pickle.load(f)
+    return model, label_encoder
 
-# ─────────────────────────────
+
+# -----------------------------
 # HOME
-# ─────────────────────────────
+# -----------------------------
 @app.route("/")
 def home():
     return redirect("/login")
 
-# ─────────────────────────────
+
+# -----------------------------
 # LOGIN
-# ─────────────────────────────
+# -----------------------------
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         email = request.form["email"]
         password = request.form["password"]
+
         conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("SELECT * FROM users WHERE email=%s", (email,))
-        user = cur.fetchone()
-        cur.close(); conn.close()
+        try:
+            cur = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SELECT * FROM users WHERE email=%s", (email,))
+            user = cur.fetchone()
+            cur.close()
+        finally:
+            release_db_connection(conn)
+
         if user and bcrypt.check_password_hash(user["password"], password):
             session["user"] = user["email"]
             session["role"] = user["role"]
-            session["age"]  = user.get("age", 10)
-            session["age_group"] = get_age_group(user.get("age", 10))
             return redirect("/dashboard")
+
         return render_template("login.html", error="Invalid credentials")
+
     return render_template("login.html")
 
-# ─────────────────────────────
+
+# -----------------------------
 # REGISTER
-# ─────────────────────────────
+# -----------------------------
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    teachers = []
+    parents = []
     conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute("SELECT id,email FROM users WHERE role='Teacher'")
-    teachers = cur.fetchall()
-    cur.execute("SELECT id,email FROM users WHERE role='Parent'")
-    parents = cur.fetchall()
-    if request.method == "POST":
-        email     = request.form["email"]
-        password  = request.form["password"]
-        role      = request.form["role"]
-        age       = int(request.form.get("age", 10))
-        teacher_id = request.form.get("teacher_id")
-        parent_id  = request.form.get("parent_id")
-        hashed = bcrypt.generate_password_hash(password).decode("utf-8")
-        if role == "Student":
-            cur.execute(
-                "INSERT INTO users(email,password,role,age,teacher_id,parent_id) VALUES(%s,%s,%s,%s,%s,%s)",
-                (email, hashed, role, age, teacher_id, parent_id)
-            )
-        else:
-            cur.execute(
-                "INSERT INTO users(email,password,role,age) VALUES(%s,%s,%s,%s)",
-                (email, hashed, role, age)
-            )
-        conn.commit(); cur.close(); conn.close()
-        return redirect("/login")
-    cur.close(); conn.close()
-    return render_template("register.html", teachers=teachers, parents=parents, age_groups=AGE_GROUPS)
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, email FROM users WHERE role='Teacher'")
+        teachers = cur.fetchall()
+        cur.execute("SELECT id, email FROM users WHERE role='Parent'")
+        parents = cur.fetchall()
 
-# ─────────────────────────────
+        if request.method == "POST":
+            email = request.form["email"]
+            password = request.form["password"]
+            role = request.form["role"]
+            teacher_id = request.form.get("teacher_id") or None
+            parent_id = request.form.get("parent_id") or None
+
+            hashed = bcrypt.generate_password_hash(password).decode("utf-8")
+
+            if role == "Student":
+                cur.execute(
+                    "INSERT INTO users(email,password,role,teacher_id,parent_id) VALUES(%s,%s,%s,%s,%s)",
+                    (email, hashed, role, teacher_id, parent_id),
+                )
+            else:
+                cur.execute(
+                    "INSERT INTO users(email,password,role) VALUES(%s,%s,%s)",
+                    (email, hashed, role),
+                )
+
+            conn.commit()
+            cur.close()
+            return redirect("/login")
+
+        cur.close()
+    finally:
+        release_db_connection(conn)
+
+    return render_template("register.html", teachers=teachers, parents=parents)
+
+
+# -----------------------------
 # DASHBOARD
-# ─────────────────────────────
+# -----------------------------
 @app.route("/dashboard")
 def dashboard():
     if "user" not in session:
         return redirect("/login")
+
     role = session["role"]
-    cfg  = get_test_config()
+
     if role == "Student":
-        return render_template("student_dashboard.html", user=session["user"],
-                               age=session.get("age", "?"),
-                               age_group_label=next((g["label"] for g in AGE_GROUPS if g["name"]==session.get("age_group")), ""),
-                               cfg=cfg)
+        return render_template("student_dashboard.html", user=session["user"])
     if role == "Teacher":
         return render_template("teacher_dashboard.html", user=session["user"])
     if role == "Parent":
@@ -181,280 +152,426 @@ def dashboard():
     if role == "Admin":
         return render_template("admin_dashboard.html", user=session["user"])
 
-# ─────────────────────────────
+    return redirect("/login")
+
+
+# -----------------------------
 # LOGOUT
-# ─────────────────────────────
+# -----------------------------
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/login")
 
-# ─────────────────────────────
-# CREATE TEACHER (Admin only)
-# ─────────────────────────────
+
+# -----------------------------
+# CREATE TEACHER
+# -----------------------------
 @app.route("/create_teacher", methods=["GET", "POST"])
 def create_teacher():
+    if "user" not in session:
+        return redirect("/login")
+
     if request.method == "POST":
-        email    = request.form["email"]
+        email = request.form["email"]
         password = request.form["password"]
-        hashed   = bcrypt.generate_password_hash(password).decode("utf-8")
+        hashed = bcrypt.generate_password_hash(password).decode("utf-8")
+
         conn = get_db_connection()
-        cur  = conn.cursor()
-        cur.execute("INSERT INTO users(email,password,role) VALUES(%s,%s,'Teacher')", (email, hashed))
-        conn.commit(); cur.close(); conn.close()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "INSERT INTO users(email,password,role) VALUES(%s,%s,'Teacher')",
+                (email, hashed),
+            )
+            conn.commit()
+            cur.close()
+        finally:
+            release_db_connection(conn)
+
         return redirect("/dashboard")
+
     return render_template("create_teacher.html")
 
-# ─────────────────────────────
-# START COGNITIVE TEST
-# ─────────────────────────────
+
+# -----------------------------
+# START TEST
+# -----------------------------
 @app.route("/start_cognitive")
 def start_cognitive():
     if "user" not in session:
         return redirect("/login")
     return redirect("/symbolic_test")
 
-# ═══════════════════════════════════════════
-# SYMBOLIC TEST (age-calibrated)
-# ═══════════════════════════════════════════
+
+# =========================================================
+# SYMBOLIC COMPARISON TEST  (10 trials)
+# =========================================================
+
 @app.route("/symbolic_test")
 def symbolic_test():
-    session["symbolic_data"]  = []
+    if "user" not in session:
+        return redirect("/login")
+    session["symbolic_data"] = []
     session["symbolic_trial"] = 0
+    session.modified = True
     return redirect("/symbolic_trial")
+
 
 @app.route("/symbolic_trial")
 def symbolic_trial():
-    cfg   = get_test_config()
+    if "user" not in session:
+        return redirect("/login")
+
     trial = session.get("symbolic_trial", 0)
-    if trial >= cfg["sym_trials"]:
+    if trial >= 10:
         return redirect("/finish_symbolic")
-    lo, hi = cfg["sym_range"]
-    left   = random.randint(lo, hi)
-    right  = random.randint(lo, hi)
+
+    left = random.randint(1, 50)
+    right = random.randint(1, 50)
     while left == right:
-        right = random.randint(lo, hi)
-    session["left"]  = left
+        right = random.randint(1, 50)
+
+    session["left"] = left
     session["right"] = right
-    return render_template("symbolic_test.html", left=left, right=right,
-                           trial=trial+1, total=cfg["sym_trials"])
+    session.modified = True
+
+    return render_template("symbolic_test.html", left=left, right=right, trial=trial + 1)
+
 
 @app.route("/submit_symbolic", methods=["POST"])
 def submit_symbolic():
+    if "user" not in session:
+        return redirect("/login")
+
     choice = request.form["choice"]
-    rt     = float(request.form["response_time"])
-    left   = session["left"]
-    right  = session["right"]
-    correct = "left" if left > right else "right"
-    session["symbolic_data"].append({"correct": 1 if choice == correct else 0, "rt": rt})
-    session["symbolic_trial"] += 1
+    rt = float(request.form.get("response_time", 0))
+
+    correct = "left" if session["left"] > session["right"] else "right"
+    val = 1 if choice == correct else 0
+
+    data = session.get("symbolic_data", [])
+    data.append({"correct": val, "rt": rt})
+    session["symbolic_data"] = data
+    session["symbolic_trial"] = session.get("symbolic_trial", 0) + 1
+    session.modified = True
+
     return redirect("/symbolic_trial")
+
 
 @app.route("/finish_symbolic")
 def finish_symbolic():
-    trials   = session["symbolic_data"]
-    accuracy = sum(t["correct"] for t in trials) / len(trials)
-    mean_rt  = sum(t["rt"] for t in trials) / len(trials)
-    session["Accuracy_SymbolicComp"] = accuracy
-    session["RTs_SymbolicComp"]      = mean_rt
+    if "user" not in session:
+        return redirect("/login")
+
+    trials = session.get("symbolic_data", [])
+    if not trials:
+        session["Accuracy_SymbolicComp"] = 0
+        session["RTs_SymbolicComp"] = 0
+    else:
+        session["Accuracy_SymbolicComp"] = sum(t["correct"] for t in trials) / len(trials)
+        session["RTs_SymbolicComp"] = sum(t["rt"] for t in trials) / len(trials)
+
+    session.modified = True
     return redirect("/ans_test")
 
-# ═══════════════════════════════════════════
-# ANS TEST (age-calibrated)
-# ═══════════════════════════════════════════
+
+# =========================================================
+# ANS TEST  (10 trials)
+# =========================================================
+
 @app.route("/ans_test")
 def ans_test():
-    session["ans_data"]  = []
+    if "user" not in session:
+        return redirect("/login")
+    session["ans_data"] = []
     session["ans_trial"] = 0
+    session.modified = True
     return redirect("/ans_trial")
+
 
 @app.route("/ans_trial")
 def ans_trial():
-    cfg   = get_test_config()
-    trial = session["ans_trial"]
-    if trial >= cfg["ans_trials"]:
+    if "user" not in session:
+        return redirect("/login")
+
+    trial = session.get("ans_trial", 0)
+    if trial >= 10:
         return redirect("/finish_ans")
-    lo, hi = cfg["ans_range"]
-    left   = random.randint(lo, hi)
-    right  = random.randint(lo, hi)
+
+    left = random.randint(5, 20)
+    right = random.randint(5, 20)
     while left == right:
-        right = random.randint(lo, hi)
-    session["ans_left"]  = left
+        right = random.randint(5, 20)
+
+    session["ans_left"] = left
     session["ans_right"] = right
-    return render_template("ans_test.html", left=left, right=right,
-                           trial=trial+1, total=cfg["ans_trials"])
+    session.modified = True
+
+    return render_template("ans_test.html", left=left, right=right, trial=trial + 1)
+
 
 @app.route("/submit_ans", methods=["POST"])
 def submit_ans():
+    if "user" not in session:
+        return redirect("/login")
+
     choice = request.form["choice"]
-    rt     = float(request.form["response_time"])
-    left   = session["ans_left"]
-    right  = session["ans_right"]
-    correct = "left" if left > right else "right"
-    session["ans_data"].append({"correct": 1 if choice == correct else 0, "rt": rt})
-    session["ans_trial"] += 1
+    rt = float(request.form.get("response_time", 0))
+
+    correct = "left" if session["ans_left"] > session["ans_right"] else "right"
+    val = 1 if choice == correct else 0
+
+    data = session.get("ans_data", [])
+    data.append({"correct": val, "rt": rt})
+    session["ans_data"] = data
+    session["ans_trial"] = session.get("ans_trial", 0) + 1
+    session.modified = True
+
     return redirect("/ans_trial")
+
 
 @app.route("/finish_ans")
 def finish_ans():
-    trials   = session["ans_data"]
-    accuracy = sum(t["correct"] for t in trials) / len(trials)
-    mean_rt  = sum(t["rt"] for t in trials) / len(trials)
-    session["Mean_ACC_ANS"] = accuracy
-    session["Mean_RTs_ANS"] = mean_rt
+    if "user" not in session:
+        return redirect("/login")
+
+    trials = session.get("ans_data", [])
+    if not trials:
+        session["Mean_ACC_ANS"] = 0
+        session["Mean_RTs_ANS"] = 0
+    else:
+        session["Mean_ACC_ANS"] = sum(t["correct"] for t in trials) / len(trials)
+        session["Mean_RTs_ANS"] = sum(t["rt"] for t in trials) / len(trials)
+
+    session.modified = True
     return redirect("/wm_test")
 
-# ═══════════════════════════════════════════
-# WORKING MEMORY TEST (age-calibrated)
-# ═══════════════════════════════════════════
+
+# =========================================================
+# WORKING MEMORY TEST  (adaptive)
+# =========================================================
+
 @app.route("/wm_test")
 def wm_test():
-    cfg = get_test_config()
-    session["wm_level"] = cfg["wm_start"]
-    session["wm_data"]  = []
+    if "user" not in session:
+        return redirect("/login")
+    session["wm_level"] = 3
+    session["wm_data"] = []
+    session.modified = True
     return redirect("/wm_trial")
+
 
 @app.route("/wm_trial")
 def wm_trial():
-    level    = session["wm_level"]
+    if "user" not in session:
+        return redirect("/login")
+
+    level = session.get("wm_level", 3)
     sequence = [str(random.randint(1, 9)) for _ in range(level)]
     session["sequence"] = sequence
-    return render_template("wm_test.html", sequence=" ".join(sequence), level=level)
+    session.modified = True
+
+    return render_template("wm_test.html", sequence=" ".join(sequence))
+
 
 @app.route("/submit_wm", methods=["POST"])
 def submit_wm():
-    answer      = request.form["answer"].replace(" ", "")
-    correct_seq = "".join(session["sequence"])
-    correct     = 1 if answer == correct_seq else 0
-    session["wm_data"].append({"level": session["wm_level"], "correct": correct})
+    if "user" not in session:
+        return redirect("/login")
+
+    answer = request.form.get("answer", "").replace(" ", "")
+    correct_seq = "".join(session.get("sequence", []))
+    correct = 1 if answer == correct_seq else 0
+
+    data = session.get("wm_data", [])
+    data.append({"level": session.get("wm_level", 3), "correct": correct})
+    session["wm_data"] = data
+    session.modified = True
+
     if correct:
-        session["wm_level"] += 1
+        session["wm_level"] = session.get("wm_level", 3) + 1
+        session.modified = True
         return redirect("/wm_trial")
+
     return redirect("/finish_wm")
+
 
 @app.route("/finish_wm")
 def finish_wm():
-    data   = session["wm_data"]
+    if "user" not in session:
+        return redirect("/login")
+
+    data = session.get("wm_data", [])
     scores = [d["level"] for d in data if d["correct"] == 1]
-    session["wm_K"] = max(scores) if scores else session.get("wm_level", 3) - 1
+    session["wm_K"] = max(scores) if scores else 0
+    session.modified = True
+
     return redirect("/final_prediction")
 
-# ═══════════════════════════════════════════
-# FINAL ML PREDICTION (age-group model)
-# ═══════════════════════════════════════════
+
+# =========================================================
+# FINAL PREDICTION
+# Uses exactly 5 features the model was trained on:
+# Mean_ACC_ANS, Mean_RTs_ANS, wm_K,
+# Accuracy_SymbolicComp, RTs_SymbolicComp
+# =========================================================
+
 @app.route("/final_prediction")
 def final_prediction():
-    import numpy as np
-    age_group = session.get("age_group", "age_10_11")
-    model, label_encoder = load_model(age_group)
+    if "user" not in session:
+        return redirect("/login")
 
-    features = np.array([[
-        session["Mean_ACC_ANS"],
-        session["Mean_RTs_ANS"],
-        session["wm_K"],
-        session["Accuracy_SymbolicComp"],
-        session["RTs_SymbolicComp"],
-    ]])
+    risk = "Unknown"
+    rec = ""
+    confidence = 0
 
-    prediction  = model.predict(features)
-    probability = model.predict_proba(features)
-    label       = label_encoder.inverse_transform(prediction)[0].lower()
-    confidence  = round(max(probability[0]) * 100, 2)
+    try:
+        mdl, le = load_model()
+        import numpy as np
 
-    # Map model label to risk + recommendation
-    if label in ["dd", "dyscalculia"]:
-        risk = "Dyscalculia Detected"
-        if confidence >= 85:
-            severity = "High Likelihood"
-            rec = ("Immediate professional evaluation is strongly recommended.\n"
-                   "Consider referral to an educational psychologist or specialist.\n"
-                   "Individualized learning plans and targeted math interventions are advised.")
-        elif confidence >= 65:
-            severity = "Moderate Likelihood"
-            rec = ("Additional structured math support and practice is recommended.\n"
-                   "Monitor progress closely with regular re-assessment.\n"
-                   "Consider consulting an educational specialist.")
+        ans_acc   = session.get("Mean_ACC_ANS", 0)
+        ans_rt    = session.get("Mean_RTs_ANS", 0)
+        wm_k      = session.get("wm_K", 0)
+        sym_acc   = session.get("Accuracy_SymbolicComp", 0)
+        sym_rt    = session.get("RTs_SymbolicComp", 0)
+
+        features = np.array([[ans_acc, ans_rt, wm_k, sym_acc, sym_rt]])
+
+        prediction  = mdl.predict(features)
+        probability = mdl.predict_proba(features)
+
+        label      = le.inverse_transform(prediction)[0].lower()
+        confidence = round(max(probability[0]) * 100, 2)
+
+        # Log for debugging — visible in Render logs
+        print(f"[PREDICTION] label={label} confidence={confidence}%")
+        print(f"[FEATURES]   ans_acc={ans_acc:.3f} ans_rt={ans_rt:.3f} wm_k={wm_k} sym_acc={sym_acc:.3f} sym_rt={sym_rt:.3f}")
+        print(f"[ALL PROBA]  {dict(zip(le.classes_, probability[0]))}")
+
+        if label in ["dd", "severe", "high", "dyscalculia", "yes"]:
+            risk = "Highest Risk"
+            rec  = "Immediate professional evaluation recommended. Use visual aids, number lines, and manipulatives. Break problems into smaller steps and allow extra time."
+        elif label in ["moderate", "medium"]:
+            risk = "Medium Risk"
+            rec  = "Provide additional math practice and monitoring. Consider support strategies like structured worksheets and frequent feedback."
+        elif label in ["mild", "low"]:
+            risk = "Lowest Risk"
+            rec  = "Provide reinforcement activities to strengthen numeracy skills."
         else:
-            severity = "Borderline"
-            rec = ("Some difficulties detected. Provide reinforcement activities.\n"
-                   "Re-assess in 4–6 weeks after targeted practice.")
-    else:
-        risk = "No Dyscalculia Detected"
-        severity = "Low Risk"
-        rec = ("Performance is within the typical range for this age group.\n"
-               "Continue with normal learning activities.\n"
-               "Re-assess periodically as part of regular monitoring.")
+            risk = "No Dyscalculia Detected"
+            rec  = "Performance is within the typical range. Continue normal learning activities."
 
-    # Save result
-    conn = get_db_connection()
-    cur  = conn.cursor()
-    cur.execute(
-        """INSERT INTO results(student_email,age,age_group,ans_acc,ans_rt,wm_k,sym_acc,sym_rt,risk_level,severity,confidence)
-           VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-        (session["user"], session.get("age", 0), age_group,
-         session["Mean_ACC_ANS"], session["Mean_RTs_ANS"], session["wm_K"],
-         session["Accuracy_SymbolicComp"], session["RTs_SymbolicComp"],
-         risk, severity, confidence)
+        # Save result to DB
+        conn = get_db_connection()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                """
+                INSERT INTO results(student_email, ans_acc, ans_rt, wm_k, sym_acc, sym_rt, risk_level)
+                VALUES(%s,%s,%s,%s,%s,%s,%s)
+                """,
+                (session["user"], ans_acc, ans_rt, wm_k, sym_acc, sym_rt, risk),
+            )
+            conn.commit()
+            cur.close()
+        finally:
+            release_db_connection(conn)
+
+    except Exception as e:
+        print("PREDICTION ERROR:", e)
+        risk = "Prediction Error"
+        rec  = f"An error occurred: {str(e)}"
+        confidence = 0
+
+    return render_template(
+        "final_result.html",
+        risk=risk,
+        confidence=confidence,
+        recommendations=rec,
     )
-    conn.commit(); cur.close(); conn.close()
 
-    return render_template("final_result.html", risk=risk, severity=severity,
-                           confidence=confidence, recommendations=rec,
-                           age_group_label=next((g["label"] for g in AGE_GROUPS if g["name"]==age_group), ""))
 
-# ─────────────────────────────
-# HISTORY (student's own)
-# ─────────────────────────────
+# -----------------------------
+# HISTORY
+# -----------------------------
 @app.route("/history")
 def history():
     if "user" not in session:
         return redirect("/login")
+
     conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute(
-        "SELECT * FROM results WHERE student_email=%s ORDER BY created_at DESC",
-        (session["user"],)
-    )
-    results = cur.fetchall()
-    cur.close(); conn.close()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            """
+            SELECT ans_acc, ans_rt, wm_k, sym_acc, sym_rt, risk_level, created_at
+            FROM results
+            WHERE student_email=%s
+            ORDER BY created_at DESC
+            """,
+            (session["user"],),
+        )
+        results = cur.fetchall()
+        cur.close()
+    except Exception as e:
+        print("HISTORY ERROR:", e)
+        results = []
+    finally:
+        release_db_connection(conn)
+
     return render_template("history.html", results=results)
 
-# ─────────────────────────────
+
+# -----------------------------
 # TEACHER RESULTS
-# ─────────────────────────────
+# -----------------------------
 @app.route("/teacher_results")
 def teacher_results():
+    if "user" not in session:
+        return redirect("/login")
+
     conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute("SELECT * FROM results ORDER BY created_at DESC")
-    results = cur.fetchall()
-    cur.close(); conn.close()
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            "SELECT student_email, risk_level, created_at FROM results ORDER BY created_at DESC"
+        )
+        results = cur.fetchall()
+        cur.close()
+    finally:
+        release_db_connection(conn)
+
     return render_template("teacher_results.html", results=results)
 
-# ─────────────────────────────
-# PARENT VIEW (own child only)
-# ─────────────────────────────
-@app.route("/parent_results")
-def parent_results():
-    if "user" not in session or session["role"] != "Parent":
-        return redirect("/login")
-    conn = get_db_connection()
-    cur  = conn.cursor(cursor_factory=RealDictCursor)
-    # Get children linked to this parent
-    cur.execute(
-        "SELECT email FROM users WHERE parent_id=(SELECT id FROM users WHERE email=%s)",
-        (session["user"],)
-    )
-    children = [r["email"] for r in cur.fetchall()]
-    results  = []
-    for child in children:
-        cur.execute("SELECT * FROM results WHERE student_email=%s ORDER BY created_at DESC", (child,))
-        results += cur.fetchall()
-    cur.close(); conn.close()
-    return render_template("parent_results.html", results=results, children=children)
 
-# ─────────────────────────────
-# RUN
-# ─────────────────────────────
+# -----------------------------
+# DEBUG — visit to confirm model details, remove after use
+# -----------------------------
+@app.route("/debug_model")
+def debug_model():
+    try:
+        mdl, le = load_model()
+        import numpy as np
+        # Test with worst possible scores
+        test = np.array([[0.0, 5.0, 0, 0.0, 5.0]])
+        pred = mdl.predict(test)
+        proba = mdl.predict_proba(test)
+        label = le.inverse_transform(pred)[0]
+        return (
+            f"<b>Classes:</b> {list(le.classes_)}<br>"
+            f"<b>Features ({len(mdl.feature_names_in_)}):</b> {list(mdl.feature_names_in_)}<br><br>"
+            f"<b>Test with all-zero/worst scores:</b><br>"
+            f"Predicted label: {label}<br>"
+            f"Probabilities: {dict(zip(le.classes_, proba[0].round(3)))}"
+        )
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+# -----------------------------
+# RUN APP
+# -----------------------------
 if __name__ == "__main__":
-    app.run(debug=False)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
