@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Working Memory Test</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    #countdown { font-size:18px; color:var(--text-secondary); margin-top:16px; }
+    #sequence  { letter-spacing:14px; color:var(--blue-dark); font-size:52px; font-weight:800; margin:20px 0; }
+    #inputArea { display:none; margin-top:24px; }
+    #inputArea input { max-width:320px; margin:0 auto; font-size:24px; letter-spacing:8px; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="navbar">🧠 Dyscalculia Detection System</div>
+  <div class="container" style="max-width:600px;">
+    <div class="card center">
+      <h2>🧠 Working Memory Test</h2>
+      <p style="color:var(--text-secondary);">Span level: <b>{{ level }}</b></p>
+      <div id="showPhase">
+        <p style="margin-top:16px;color:var(--text-secondary);">Memorise this sequence:</p>
+        <div id="sequence">{{ sequence }}</div>
+        <div id="countdown">Hiding in <span id="timer">3</span>s…</div>
+      </div>
+      <div id="inputArea">
+        <p style="color:var(--text-secondary);margin-bottom:16px;">Type the sequence you saw:</p>
+        <form method="POST" action="/submit_wm">
+          <input type="text" name="answer" id="answer" placeholder="e.g. 4 7 2" required autofocus>
+          <br><br>
+          <button type="submit" class="btn btn-primary">Submit Answer</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <script>
+    let t = 3;
+    const timerEl = document.getElementById("timer");
+    const interval = setInterval(function() {
+      t--;
+      timerEl.textContent = t;
+      if (t <= 0) {
+        clearInterval(interval);
+        document.getElementById("showPhase").style.display  = "none";
+        document.getElementById("inputArea").style.display  = "block";
+        document.getElementById("answer").focus();
+      }
+    }, 1000);
+  </script>
+</body>
+</html>

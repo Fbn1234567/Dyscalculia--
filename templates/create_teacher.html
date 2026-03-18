@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Create Teacher</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="navbar">🧠 Dyscalculia Detection System</div>
+  <div class="container" style="max-width:500px;">
+    <div class="card">
+      <h2>➕ Create Teacher Account</h2>
+      <form method="POST" style="margin-top:20px;">
+        <div class="form-group">
+          <label>Teacher Email</label>
+          <input type="email" name="email" placeholder="teacher@school.com" required>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" name="password" placeholder="Minimum 8 characters" required>
+        </div>
+        <button class="btn btn-primary" type="submit" style="width:100%;">Create Teacher</button>
+      </form>
+      <a href="/dashboard" class="back-btn">← Back to Dashboard</a>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Teacher Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="navbar">🧠 Dyscalculia Detection System</div>
+  <div class="container">
+    <div class="card center">
+      <div style="font-size:52px;margin-bottom:12px;">👩‍🏫</div>
+      <h2>Teacher Dashboard</h2>
+      <p style="color:var(--text-secondary);margin-bottom:24px;">Welcome, <b>{{ user }}</b></p>
+
+      <div class="dashboard-grid" style="text-align:left;">
+        <div class="dashboard-card">
+          <div class="icon">📊</div>
+          <h3>Student Results</h3>
+          <p>View all student assessments, risk levels, and confidence scores</p>
+          <a href="/teacher_results" class="btn btn-primary">View Results</a>
+        </div>
+        <div class="dashboard-card">
+          <div class="icon">🚪</div>
+          <h3>Logout</h3>
+          <p>Securely exit your account</p>
+          <a href="/logout" class="btn btn-danger">Logout</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

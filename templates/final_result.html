@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Assessment Result</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    .conf-ring {
+      width:120px; height:120px; border-radius:50%;
+      border:8px solid var(--border);
+      display:flex; align-items:center; justify-content:center;
+      margin:0 auto 20px;
+      font-size:26px; font-weight:800; color:var(--blue-dark);
+      box-shadow: var(--shadow-md);
+    }
+    .rec-box {
+      background:#f8fafc; border-left:4px solid var(--blue);
+      border-radius:10px; padding:16px 20px;
+      text-align:left; margin-top:20px; white-space:pre-line;
+      font-size:14px; line-height:1.7; color:var(--text-primary);
+    }
+  </style>
+</head>
+<body>
+  <div class="navbar">🧠 Dyscalculia Detection System</div>
+  <div class="container" style="max-width:620px;">
+    <div class="card center">
+      <h2>Cognitive Assessment Complete</h2>
+      <p style="color:var(--text-secondary);margin:6px 0 12px;">{{ age_group_label }} Profile</p>
+
+      {% if "Dyscalculia Detected" in risk %}
+        <h1 class="result-high" style="margin:12px 0 4px;">{{ risk }}</h1>
+        <p style="color:var(--amber);font-weight:600;">{{ severity }}</p>
+      {% else %}
+        <h1 class="result-none" style="margin:12px 0 4px;">{{ risk }}</h1>
+        <p style="color:var(--green);font-weight:600;">{{ severity }}</p>
+      {% endif %}
+
+      <h3 style="margin-top:28px;">Prediction Confidence</h3>
+      <div class="conf-ring">{{ confidence }}%</div>
+
+      <h3>Recommendations</h3>
+      <div class="rec-box">{{ recommendations }}</div>
+
+      <br>
+      <a href="/dashboard" class="btn btn-primary">Back to Dashboard</a>
+      &nbsp;
+      <a href="/history" class="btn btn-outline">View History</a>
+    </div>
+  </div>
+</body>
+</html>

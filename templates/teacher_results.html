@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Student Results – Teacher View</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="navbar">🧠 Dyscalculia Detection System</div>
+  <div class="container">
+    <div class="card">
+      <h2>📊 Student Assessment Results</h2>
+      <p style="color:var(--text-secondary);margin-bottom:20px;">All students across all age groups</p>
+      {% if results %}
+      <table>
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Age</th>
+            <th>Age Group</th>
+            <th>ANS Acc</th>
+            <th>WM Span</th>
+            <th>Sym Acc</th>
+            <th>Result</th>
+            <th>Severity</th>
+            <th>Confidence</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in results %}
+          <tr>
+            <td>{{ r.student_email }}</td>
+            <td>{{ r.age or "—" }}</td>
+            <td><span style="font-size:12px;color:var(--text-secondary);">{{ r.age_group or "—" }}</span></td>
+            <td>{{ "%.0f%%"|format(r.ans_acc*100) }}</td>
+            <td>{{ r.wm_k }}</td>
+            <td>{{ "%.0f%%"|format(r.sym_acc*100) }}</td>
+            <td>
+              {% if "Dyscalculia" in r.risk_level %}
+                <span class="risk-high">{{ r.risk_level }}</span>
+              {% else %}
+                <span class="risk-low">{{ r.risk_level }}</span>
+              {% endif %}
+            </td>
+            <td>{{ r.severity or "—" }}</td>
+            <td>{{ "%.1f"|format(r.confidence or 0) }}%</td>
+            <td>{{ r.created_at.strftime('%d %b %Y') }}<br>
+              <small style="color:var(--text-secondary);">{{ r.created_at.strftime('%H:%M') }}</small>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p style="color:var(--text-secondary);margin-top:20px;">No student results yet.</p>
+      {% endif %}
+      <a href="/dashboard" class="back-btn">← Back to Dashboard</a>
+    </div>
+  </div>
+</body>
+</html>

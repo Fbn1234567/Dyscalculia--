@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Child's Results – Parent View</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="navbar">🧠 Dyscalculia Detection System</div>
+  <div class="container">
+    <div class="card">
+      <h2>👨‍👩‍👧 Your Child's Assessment Results</h2>
+      {% if children %}
+        <p style="color:var(--text-secondary);margin-bottom:20px;">
+          Children linked to your account:
+          {% for c in children %}<b>{{ c }}</b>{% if not loop.last %}, {% endif %}{% endfor %}
+        </p>
+      {% endif %}
+
+      {% if results %}
+      <table>
+        <thead>
+          <tr>
+            <th>Child</th>
+            <th>Age Group</th>
+            <th>ANS Acc</th>
+            <th>WM Span</th>
+            <th>Sym Acc</th>
+            <th>Result</th>
+            <th>Confidence</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in results %}
+          <tr>
+            <td>{{ r.student_email }}</td>
+            <td><span style="font-size:12px;color:var(--text-secondary);">{{ r.age_group or "—" }}</span></td>
+            <td>{{ "%.0f%%"|format(r.ans_acc*100) }}</td>
+            <td>{{ r.wm_k }}</td>
+            <td>{{ "%.0f%%"|format(r.sym_acc*100) }}</td>
+            <td>
+              {% if "Dyscalculia" in r.risk_level %}
+                <span class="risk-high">{{ r.risk_level }}</span>
+              {% else %}
+                <span class="risk-low">{{ r.risk_level }}</span>
+              {% endif %}
+            </td>
+            <td>{{ "%.1f"|format(r.confidence or 0) }}%</td>
+            <td>{{ r.created_at.strftime('%d %b %Y') }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p style="color:var(--text-secondary);margin-top:20px;">No results found. Your child has not completed an assessment yet.</p>
+      {% endif %}
+
+      <a href="/dashboard" class="back-btn">← Back to Dashboard</a>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Parent Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="navbar">🧠 Dyscalculia Detection System</div>
+  <div class="container">
+    <div class="card center">
+      <div style="font-size:52px;margin-bottom:12px;">👨‍👩‍👧</div>
+      <h2>Parent Dashboard</h2>
+      <p style="color:var(--text-secondary);margin-bottom:24px;">Welcome, <b>{{ user }}</b></p>
+
+      <div class="dashboard-grid" style="text-align:left;">
+        <div class="dashboard-card">
+          <div class="icon">📋</div>
+          <h3>Child's Results</h3>
+          <p>View your child's assessment history and risk evaluations</p>
+          <a href="/parent_results" class="btn btn-primary">View Results</a>
+        </div>
+        <div class="dashboard-card">
+          <div class="icon">🚪</div>
+          <h3>Logout</h3>
+          <p>Securely exit your account</p>
+          <a href="/logout" class="btn btn-danger">Logout</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

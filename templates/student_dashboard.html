@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Student Dashboard – Dyscalculia Detection</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="navbar">🧠 Dyscalculia Detection System</div>
+  <div class="container">
+
+    <div style="margin-bottom:24px;">
+      <h2>Student Dashboard</h2>
+      <p style="color:var(--text-secondary);">Welcome back, <b>{{ user }}</b></p>
+      <span class="age-badge">🎂 Age {{ age }} &nbsp;|&nbsp; {{ age_group_label }} Profile</span>
+    </div>
+
+    <div class="info-box">
+      <b>Your test is calibrated for {{ age_group_label }}.</b>
+      Symbolic trials: {{ cfg.sym_trials }} &nbsp;|&nbsp;
+      ANS trials: {{ cfg.ans_trials }} &nbsp;|&nbsp;
+      Starting WM span: {{ cfg.wm_start }}
+    </div>
+
+    <div class="dashboard-grid">
+
+      <div class="dashboard-card">
+        <div class="icon">🧪</div>
+        <h3>Cognitive Assessment</h3>
+        <p>Symbolic + ANS + Working Memory tests tailored to your age group</p>
+        <a href="{{ url_for('start_cognitive') }}" class="btn btn-primary">Start Test</a>
+      </div>
+
+      <div class="dashboard-card">
+        <div class="icon">📋</div>
+        <h3>Test History</h3>
+        <p>View all your past assessment results and progress over time</p>
+        <a href="{{ url_for('history') }}" class="btn btn-success">View History</a>
+      </div>
+
+      <div class="dashboard-card">
+        <div class="icon">🚪</div>
+        <h3>Logout</h3>
+        <p>Securely exit your account</p>
+        <a href="{{ url_for('logout') }}" class="btn btn-danger">Logout</a>
+      </div>
+
+    </div>
+  </div>
+</body>
+</html>

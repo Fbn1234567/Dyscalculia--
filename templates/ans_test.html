@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ANS Dot Comparison Test</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script>
+    let startTime;
+    window.onload = function() {
+      startTime = Date.now();
+      drawDots("leftCanvas",  {{ left }});
+      drawDots("rightCanvas", {{ right }});
+    };
+    function drawDots(id, count) {
+      const canvas = document.getElementById(id);
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const placed = [];
+      let attempts = 0;
+      while (placed.length < count && attempts < 3000) {
+        attempts++;
+        const r = 7, x = Math.random()*180+r, y = Math.random()*180+r;
+        let ok = true;
+        for (const p of placed) {
+          if (Math.hypot(p.x-x, p.y-y) < r*2.5) { ok=false; break; }
+        }
+        if (ok) {
+          placed.push({x,y});
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI*2);
+          ctx.fillStyle = "#1e3a8a";
+          ctx.fill();
+        }
+      }
+    }
+    function choose(side) {
+      const rt = (Date.now() - startTime) / 1000;
+      document.getElementById("choice").value = side;
+      document.getElementById("response_time").value = rt;
+      document.getElementById("dotForm").submit();
+    }
+  </script>
+</head>
+<body>
+  <div class="navbar">🧠 Dyscalculia Detection System</div>
+  <div class="container" style="max-width:680px;">
+    <div class="card center">
+      <h2>Click the side with <em>more dots</em></h2>
+      <p style="color:var(--text-secondary);margin:8px 0 4px;">Trial {{ trial }} of {{ total }}</p>
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" style="width:{{ (trial/total*100)|int }}%"></div>
+      </div>
+      <form id="dotForm" method="POST" action="/submit_ans">
+        <input type="hidden" name="choice" id="choice">
+        <input type="hidden" name="response_time" id="response_time">
+        <div class="canvas-row">
+          <div class="canvas-box" onclick="choose('left')">
+            <canvas id="leftCanvas" width="200" height="200"></canvas>
+          </div>
+          <div class="canvas-box" onclick="choose('right')">
+            <canvas id="rightCanvas" width="200" height="200"></canvas>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

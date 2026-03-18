@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="navbar">🧠 Dyscalculia Detection System</div>
+  <div class="container">
+    <div class="card center">
+      <div style="font-size:52px;margin-bottom:12px;">🛡️</div>
+      <h2>Admin Dashboard</h2>
+      <p style="color:var(--text-secondary);margin-bottom:24px;">Welcome, <b>{{ user }}</b></p>
+
+      <div class="dashboard-grid" style="text-align:left;">
+        <div class="dashboard-card">
+          <div class="icon">➕</div>
+          <h3>Create Teacher</h3>
+          <p>Add a new teacher account to the system</p>
+          <a href="/create_teacher" class="btn btn-primary">Create Teacher</a>
+        </div>
+        <div class="dashboard-card">
+          <div class="icon">📊</div>
+          <h3>All Results</h3>
+          <p>View all student assessments across the platform</p>
+          <a href="/teacher_results" class="btn btn-purple">View All Results</a>
+        </div>
+        <div class="dashboard-card">
+          <div class="icon">🚪</div>
+          <h3>Logout</h3>
+          <p>Securely exit your account</p>
+          <a href="/logout" class="btn btn-danger">Logout</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
